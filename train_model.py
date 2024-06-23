@@ -9,10 +9,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
-from monai.data import DataLoader
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
-from torch.utils.data import Dataset, BatchSampler, RandomSampler
+from torch.utils.data import Dataset, BatchSampler, RandomSampler, DataLoader
 from tqdm import tqdm
 from transformers import BertTokenizer, BertModel
 
@@ -30,12 +29,12 @@ def parse_args():
     parser.add_argument("--snr", type=int, default=12, help="Signal to noise ratio")
     parser.add_argument('--device', type=str, default='cuda', help='Device to train on (cpu or cuda)')
     parser.add_argument("--embed_dim", type=int, default=128, help="Embedding dimension")
-
+    parser.add_argument("--depth", type=int, default=3, help="Depth of the model")
     return parser.parse_args()
 
 class TextDataset(Dataset):
     def __init__(self, split="train"):
-        with open(f'{split}_text.pkl', 'rb') as f:
+        with open(f'dataset/{split}.pkl', 'rb') as f:
             self.tokenized_tensor = torch.tensor(numpy.array(pickle.load(f)), dtype=torch.long)
             self.tokenizer = tokenizer
             self.num_classes = self.tokenizer.vocab_size
@@ -113,7 +112,7 @@ def calBLEU(n_gram, s_predicted, s, length):
 def main():
     args = parse_args()
     run = wandb.init(
-        name=f"Text_T-DeepSC_{args.snr}_depth_{args.depth}_embed_{args.embedding_dim}",
+        name=f"Text_T-DeepSC_{args.snr}_depth_{args.depth}_embed_{args.embed_dim}",
         project='MambaTextModel', config=vars(args))
 
     if not os.path.exists(args.saved_path):
@@ -134,7 +133,7 @@ def main():
     # channel_mi_estimator = torch.compile(channel_mi_estimator, mode='reduce-overhead')
     sem_optim = torch.optim.AdamW(list(sem_net.parameters()), lr=args.lr)
     # mi_optim = torch.optim.AdamW(list(channel_mi_estimator.parameters()), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sem_optim, mode='min', factor=0.1, patience=args.patience,
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sem_optim, mode='min', factor=0.1, patience=5,
                                                            verbose=True)
     scaler = GradScaler()
     best_loss = float('inf')

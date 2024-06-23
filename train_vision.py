@@ -1,13 +1,16 @@
 import argparse
-
-import numpy
-import torch
+import math
 import os
-from PIL import Image
-from torch.cuda.amp import autocast, GradScaler
+import time
 
+import torch
+import wandb
+from PIL import Image
 from datasets import load_dataset
+from torch import nn
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import Dataset, DataLoader
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision import transforms
 from torchvision.transforms import Normalize
 from tqdm import tqdm
@@ -15,6 +18,13 @@ from tqdm import tqdm
 from model import ViSemanticCommunicationSystem
 
 torch.set_float32_matmul_precision('high')
+
+
+@torch.jit.script
+def compute_psnr(a, b):
+    mse = torch.mean((a - b) ** 2).item()
+    return -10 * math.log10(mse)
+
 
 class ViVQADataset(Dataset):
     def __init__(self, split="train", img_size=32):
@@ -49,6 +59,7 @@ class ViCLEVRDataset(Dataset):
             transforms.ToTensor(),
             Normalize((0.1307,), (0.3081,))
         ])
+
     def __len__(self):
         return len(self.img_files)
 
@@ -62,7 +73,6 @@ class ViCLEVRDataset(Dataset):
         return processed_img
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Train text model')
     parser.add_argument('--saved_path', type=str, default='saved_model', help='Path to save model')
@@ -74,7 +84,7 @@ def parse_args():
     parser.add_argument("--depth", type=int, default=3, help="Depth of the encoder/decoder module")
     parser.add_argument("--patience", type=int, default=5, help="Patience for early stopping")
     parser.add_argument("--clip_grad", type=float, default=1.0, help="Gradient clipping norm value")
-    parser.add_argument('--embedding_dim', type=int, default=48, help='Embedding dimension')
+    parser.add_argument('--embedding_dim', type=int, default=384, help='Embedding dimension')
 
     return parser.parse_args()
 
@@ -96,7 +106,7 @@ def main():
     if not os.path.exists(args.saved_path):
         os.makedirs(args.saved_path)
     run = wandb.init(
-        name=f"MambaOutViModel_SNR_{args.snr}_depth_{args.depth}", project='MambaOutViModel', config=vars(args)
+        name=f"TDeepSCVi_SNR_{args.snr}_depth_{args.depth}", project='T-DeepSC', config=vars(args)
     )
     print("Config:", dict(run.config))
 
@@ -112,8 +122,10 @@ def main():
     sem_optim = torch.optim.AdamW(list(vi_model.parameters()), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(sem_optim, mode='min', factor=0.5, patience=3, verbose=True)
 
-    train_dataloader = DataLoader(train_concat_dataset, batch_size=args.batch_size, drop_last=False, shuffle=True, num_workers=4)
-    test_dataloader = DataLoader(test_concat_dataset, batch_size=args.batch_size, drop_last=False, shuffle=False, num_workers=4)
+    train_dataloader = DataLoader(train_concat_dataset, batch_size=args.batch_size, drop_last=False, shuffle=True,
+                                  num_workers=4)
+    test_dataloader = DataLoader(test_concat_dataset, batch_size=args.batch_size, drop_last=False, shuffle=False,
+                                 num_workers=4)
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(args.device)
     best_loss = float('inf')
     mse_loss = nn.MSELoss().to('cuda')
@@ -162,13 +174,13 @@ def main():
                       'test_ssim': test_ssim}
         print(f"Epoch: {epoch + 1}/{args.num_epoch}: {epoch_info}")
         run.log(epoch_info)
-        torch.save(vi_model.state_dict(), os.path.join(args.saved_path, f'vi_model_{epoch}.pth'))
-        wandb.save(os.path.join(args.saved_path, f'vi_model_{epoch}.pth'))
+        torch.save(vi_model.state_dict(), os.path.join(args.saved_path, f'vi_tdeepsc_model_{epoch}.pth'))
+        wandb.save(os.path.join(args.saved_path, f'vi_tdeepsc_model_{epoch}.pth'))
 
         if test_epoch_loss < best_loss:
             best_loss = epoch_loss
-            torch.save(vi_model.state_dict(), os.path.join(args.saved_path, f'best_vi_{args.snr}_model.pth'))
-            wandb.save(os.path.join(args.saved_path, f'best_vi_{args.snr}_model.pth'))
+            torch.save(vi_model.state_dict(), os.path.join(args.saved_path, f'vi_tdeepsc_model_model.pth'))
+            wandb.save(os.path.join(args.saved_path, f'vi_tdeepsc_model_model.pth'))
     run.finish()
     print("Training completed")
 

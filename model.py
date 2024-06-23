@@ -110,25 +110,25 @@ class ViSemanticCommunicationSystem(nn.Module):  # pure DeepSC
         self.noiseChannel = torch.jit.script(AWGNChannel(snr))
 
 
-
-def embedding(input_size, output_size): # embedding layer, the former is the size of dic and
+def embedding(input_size, output_size):  # embedding layer, the former is the size of dic and
     return nn.Embedding(input_size, output_size)
 
-def dense(input_size, output_size): # dense layer is a full connection layer and used to gather information
+
+def dense(input_size, output_size):  # dense layer is a full connection layer and used to gather information
     return torch.nn.Sequential(
-    nn.Linear(input_size, output_size),
-    nn.ReLU()
+        nn.Linear(input_size, output_size),
+        nn.ReLU()
     )
 
 
-class TextSemanticCommunicationSystem(nn.Module): # pure DeepSC
-    def init(self, input_size, output_size=128, snr=12, K=8, noise_channel=AWGNChannel):
-        super(TextSemanticCommunicationSystem, self).init()
+class TextSemanticCommunicationSystem(nn.Module):  # pure DeepSC
+    def __init__(self, input_size, output_size=128, snr=12, K=8, noise_channel=AWGNChannel):
+        super(TextSemanticCommunicationSystem, self).__init__()
         self.snr = snr
         self.K = K
-        self.embedding = embedding(input_size, output_size) # which means the corpus has input_size kinds of words and
+        self.embedding = embedding(input_size, output_size)  # which means the corpus has input_size kinds of words and
         # each word will be coded with a output_size dimensions vector
-        self.frontEncoder = nn.TransformerEncoderLayer(d_model=output_size, nhead=8) # according to the paper
+        self.frontEncoder = nn.TransformerEncoderLayer(d_model=output_size, nhead=8)  # according to the paper
         self.encoder = nn.TransformerEncoder(self.frontEncoder, num_layers=3)
         self.denseEncoder1 = dense(output_size, 256)
         self.denseEncoder2 = dense(256, 2 * self.K)
@@ -153,5 +153,3 @@ class TextSemanticCommunicationSystem(nn.Module): # pure DeepSC
         codeSemantic = self.prediction(codeSemantic)
         info = self.softmax(codeSemantic)
         return info
-
-
